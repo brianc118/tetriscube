@@ -1,7 +1,6 @@
 {
-	"l": 4,
-	"w": 4,
-	"h": 4,
+	"name": "Standard 4x4x4 Tetris Cube Problem",
+	"dimensions": [4, 4, 4],
 	"pieces": [
 		[
 			[0, 0, 0], 
