@@ -5,109 +5,23 @@ Solver for the tetris cube problem
 
 from datetime import datetime
 from pprint import pprint
-from functools import reduce
 from cubeviewer import *
+from matrix import *
+from tetrismath import *
 import json
 import pulp
-import math
 
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
 probfile = 'standardcube.json'
+answerfile = 'tetriscubeout.txt'
+maxsolutions = 10
+alpha = 0.4  # alpha for output
 
-def mmin(m, i, j):
-    return [r[:j] + r[j + 1:] for r in (m[:i] + m[i + 1:])]
-
-def det(m):
-    """ Returns determinant of matrix """
-    if len(m) == 2:
-        return m[0][0] * m[1][1] - m[0][1] * m[1][0]
-    d = 0
-    for c in range(len(m)):
-        d += ((-1) ** c) * m[0][c] * det(mmin(m, 0, c))
-    return d
-
-def permutations(l):
-    """ Returns permutations of elements of list l """
-    if len(l) <= 0:
-        raise ValueError("List to permute is empty")
-    elif len(l) == 1:
-        return [[l[0]]]
-    else:
-        p = []
-        for i in range(len(l)):
-            for sp in permutations(l[:i] + l[i + 1:]):
-                p.append([l[i]] + sp)
-        return p
-
-def getmat(p):
-    """ Returns transformation corresponding to permutation list p """
-    n = len(p)
-    if min(p) < 0 or max(p) >= n:
-        raise ValueError("Invalid permutation list")
-    m = []
-    for i in range(n):
-        m.append([1 if j == p[i] else 0 for j in range(n)])
-    return m
-
-
-def point2int(point, dimensions):
-    x = 0
-    n = math.ceil(math.log2(max(dimensions)))
-    for i in point:
-        x <<= n
-        x |= i
-    return x
-
-def int2point(x, dimensions):
-    n = math.ceil(math.log2(max(dimensions)))
-    ndim = len(dimensions)
-    point = []
-    for i in range(ndim):
-        point.append(x & (2 ** n - 1))
-        x >>= n
-    return list(reversed(point))
-
-def orthrotations(points, remove_identical=False):
-    """
-    Returns a list of all orthogonal simple rotations of points.
-
-    """
-    def points2mutable(points):
-        com = [sum([p[i] for p in points]) / len(points) for i in range(len(points[0]))]
-        # make com = origin
-        return tuple(sorted([tuple([p[i] - com[i] for i in range(len(points[0]))]) for p in points]))
-
-    if len(points) <= 0:
-        raise ValueError("No points given")
-    else:
-        ans = []
-        n = len(points[0])
-        perms = permutations(list(range(n)))
-        ids = set()
-
-        for i in range(2**n):
-            bmap = [1 if i >> k & 1 else -1 for k in range(0, n)]
-            for o in perms:
-                if det(getmat(o)) * reduce(lambda x, y: x * y, bmap) != 1:
-                    continue
-                base = []
-                for p in points:
-                    base.append([0] * n)
-                    for j in range(n):
-                        base[-1][j] = p[o[j]] * bmap[j]
-                id = points2mutable(base)
-                if id in ids:
-                    continue
-                ids.add(id)
-                ans.append(base)
-        return ans
-
-
-# enumerate piece where piece is an n-orthotope
 def enumpiece(piece, dimensions, rotate=True, fcoord=lambda x: x, fpiece=lambda x: x):
+    """ enumerate piece where piece is an n-orthotope. """
     if len(piece) <= 0:
         raise ValueError("Piece has no volume")
 
@@ -155,16 +69,21 @@ with open(probfile) as pjson:
     npieces = len(pd['pieces'])
 
 # create universe set
-U = enumpiece([[0, 0, 0]], pd['dimensions'], fcoord=lambda x: point2int(x, pd['dimensions']), fpiece=lambda x: x[0]) + list(range(-1, -1-npieces, -1))
+U = enumpiece([[0, 0, 0]], pd['dimensions'], fcoord=lambda x: point2int(
+    x, pd['dimensions']), fpiece=lambda x: x[0]) + list(range(-1, -1 - npieces, -1))
 
 # create piece enumerations
 pieces = []
 for i, piece in enumerate(pd['pieces']):
     if i == 0:
-        pieces += enumpiece(piece, pd['dimensions'], rotate=False, fcoord=lambda x: point2int(x, pd['dimensions']), fpiece=lambda x: x + [-i-1])
-    pieces += enumpiece(piece, pd['dimensions'], fcoord=lambda x: point2int(x, pd['dimensions']), fpiece=lambda x: x + [-i-1])
+        pieces += enumpiece(piece, pd['dimensions'], rotate=False, fcoord=lambda x: point2int(
+            x, pd['dimensions']), fpiece=lambda x: x + [-i - 1])
+    pieces += enumpiece(piece, pd['dimensions'], fcoord=lambda x: point2int(
+        x, pd['dimensions']), fpiece=lambda x: x + [-i - 1])
 
-x = pulp.LpVariable.dicts('Choice', (list(range(len(pieces)))), 0, 1, pulp.LpInteger)
+# create problem variables
+x = pulp.LpVariable.dicts(
+    'Choice', (list(range(len(pieces)))), 0, 1, pulp.LpInteger)
 
 prob = pulp.LpProblem(pd['name'], pulp.LpMinimize)
 
@@ -176,12 +95,10 @@ for u in U:
 
 prob.writeLP("tetriscube.lp")
 
-tetriscubeout = open('tetriscubeout.txt','w')
+tetriscubeout = open(answerfile, 'w')
 
 nsolutions = 0
-maxsolutions = 10
 solutions = []
-alpha = 0.4
 piecetocolor = [tuple(list(plt.cm.get_cmap('jet', npieces)(i)[:-1]) + [alpha]) for i in range(npieces)]
 
 while True:
@@ -192,16 +109,18 @@ while True:
         for i in range(len(pieces)):
             if pulp.value(x[i]) != 0:
                 solutions[-1].append((i, [int2point(id, pd['dimensions']) for id in pieces[i][:-1]]))
-        print("\r{} Solutions found = {}".format(datetime.now(), nsolutions), sep=' ', end='')
+        print('\r{} Solutions found = {}'.format(
+            datetime.now(), nsolutions), sep=' ', end='')
         colors = []
-        ax=plt.figure().gca(projection='3d')
+        ax = plt.figure().gca(projection='3d')
         for i, (j, piece) in enumerate(solutions[-1]):
-            viewpiece(piece, pd['dimensions'], ax=ax, color=piecetocolor[-(pieces[j][-1]+1)], export='solution_{}_step_{}'.format(nsolutions, i))
+            viewpiece(piece, pd['dimensions'], ax=ax, color=piecetocolor[
+                      -(pieces[j][-1] + 1)], export='solution_{}_step_{}'.format(nsolutions, i))
 
         if nsolutions >= maxsolutions:
             print('\nReached target number of solutions')
             break
-        
+
         # add constraint to avoid finding solution again
         prob += pulp.lpSum([x[i] for i, piece in solutions[-1]]) <= len(solutions[-1]) - 1, ''
     else:
