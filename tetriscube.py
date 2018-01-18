@@ -17,7 +17,8 @@ from mpl_toolkits.mplot3d import Axes3D
 
 probfile = 'standardcube.json'
 answerfile = 'tetriscubeout.txt'
-maxsolutions = 10
+stepfilefmt = probfile[:-5] + '_solution_{}_step_{}'
+maxsolutions = 5
 alpha = 0.4  # alpha for output
 
 def enumpiece(piece, dimensions, rotate=True, fcoord=lambda x: x, fpiece=lambda x: x):
@@ -67,9 +68,10 @@ def enumpiece(piece, dimensions, rotate=True, fcoord=lambda x: x, fpiece=lambda 
 with open(probfile) as pjson:
     pd = json.load(pjson)
     npieces = len(pd['pieces'])
+    ndim = len(pd['dimensions'])
 
 # create universe set
-U = enumpiece([[0, 0, 0]], pd['dimensions'], fcoord=lambda x: point2int(
+U = enumpiece([[0] * ndim], pd['dimensions'], fcoord=lambda x: point2int(
     x, pd['dimensions']), fpiece=lambda x: x[0]) + list(range(-1, -1 - npieces, -1))
 
 # create piece enumerations
@@ -109,13 +111,19 @@ while True:
         for i in range(len(pieces)):
             if pulp.value(x[i]) != 0:
                 solutions[-1].append((i, [int2point(id, pd['dimensions']) for id in pieces[i][:-1]]))
+        
         print('\r{} Solutions found = {}'.format(
             datetime.now(), nsolutions), sep=' ', end='')
-        colors = []
-        ax = plt.figure().gca(projection='3d')
-        for i, (j, piece) in enumerate(solutions[-1]):
-            viewpiece(piece, pd['dimensions'], ax=ax, color=piecetocolor[
-                      -(pieces[j][-1] + 1)], export='solution_{}_step_{}'.format(nsolutions, i))
+
+        ax = plt.figure(figsize=(6, 6)).gca(projection='3d')
+        if ndim == 2:
+            for i, (j, piece) in enumerate(solutions[-1]):
+                viewpiece(map(lambda x: x + [0], piece), pd['dimensions'] + [1], ax=ax, color=piecetocolor[
+                          -(pieces[j][-1] + 1)], export=stepfilefmt.format(nsolutions, i))
+        elif ndim == 3:
+            for i, (j, piece) in enumerate(solutions[-1]):
+                viewpiece(piece, pd['dimensions'], ax=ax, color=piecetocolor[
+                          -(pieces[j][-1] + 1)], export=stepfilefmt.format(nsolutions, i))
 
         if nsolutions >= maxsolutions:
             print('\nReached target number of solutions')
